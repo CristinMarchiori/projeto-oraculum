@@ -1,0 +1,36 @@
+﻿# Resultados industriais
+resultados_oraculum/
+*.csv
+*.png
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Empacotamento e executaveis gerados
+build/
+dist/
+*.exe
+*.pkg
+*.pyz
+
+# Segredos e configuracoes locais
+.env
+.env.*
+!.env.example
+secrets.*
+
+# Backups
+*_backup_*
+backup/
+backups/
+
+# Editores e sistema operacional
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
