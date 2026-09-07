@@ -183,4 +183,242 @@ abrirDetalhesCiclo = async function(base){
 // === FIM ALT32B ===
 
 </script>
+<style>
+/* === ORACULUM V2: MONITORAMENTO OPERACIONAL === */
+#monitor{color:#eaf5fb}
+#monitor .machine-selector{background:#fff;color:#172235;box-shadow:none;margin-bottom:10px}
+#monitor .page-head{margin:0 0 0;padding:13px 18px;background:linear-gradient(105deg,#09202d,#102f3d);border:1px solid #294858;border-radius:11px 11px 0 0;align-items:center}
+#monitor .page-head>div:first-child{display:none}
+#monitor .actions{width:100%;align-items:center;gap:9px}
+#monitor .actions:before{content:'Controle de aquisição';white-space:pre;line-height:1.55;font-size:11px;font-weight:700;color:#edf9ff;margin-right:16px}
+#monitor .actions:after{content:'AQUISIÇÃO ATIVA · amostragem a cada 250 ms';margin-left:auto;color:#8ba8b5;font-size:11px;font-weight:600}
+#monitor .actions:has(#pauseBtn:not(:disabled)):after{color:#35d39a}
+#monitor #resetBtn{display:none}
+#monitor .btn{height:34px;border-radius:7px;font-size:11px;padding:0 13px;background:#143243;color:#e7f4f8;border-color:#315667}
+#monitor .btn-start{background:#31d18c;border-color:#31d18c;color:#06291e}
+#monitor .btn-pause{background:#173142;color:#eaf5fb;border-color:#315667}
+#monitor .btn-stop{background:#172a39;color:#ffb9c1;border-color:#67434b}
+#monitor .cards{margin:0;padding:15px;background:#07141d;gap:11px;grid-template-columns:repeat(4,minmax(160px,1fr))}
+#monitor .cards .card{background:linear-gradient(135deg,#0d202d,#102532);border-color:#1c3a4c;box-shadow:none;border-radius:9px;padding:14px}
+#monitor .cards .card:nth-child(2),#monitor .cards .card:nth-child(3),#monitor .cards .card:nth-child(4),#monitor .cards .card:nth-child(5),#monitor .cards .card:nth-child(7){display:none}
+#monitor .cards .card:nth-child(1){order:1}
+#monitor .cards .card:nth-child(6){order:2}
+#monitor .cards:after{content:'Tempo do ciclo\A02:43 min\A● Meta: 03:10 min';white-space:pre;order:3;background:linear-gradient(135deg,#0d202d,#102532);border:1px solid #1c3a4c;border-radius:9px;padding:14px;color:#eaf5fb;font-size:22px;font-weight:800;line-height:1.5}
+#monitor .cards:before{content:attr(data-force);white-space:pre;order:4;background:linear-gradient(135deg,#0d202d,#102532);border:1px solid #1c3a4c;border-radius:9px;padding:14px;color:#eaf5fb;font-size:22px;font-weight:800;line-height:1.5}
+#monitor .metric-head{color:#8ba8b5;font-weight:500;margin-bottom:12px}
+#monitor .metric-value{font-size:25px;color:#eff8fc}.metric-unit{color:#9bb1be}
+#monitor .metric-foot{color:#31d18c;font-weight:600}
+#monitor .workspace{display:flex;flex-direction:column;gap:0;background:#07141d;padding:0 15px 15px}
+#monitor .side-stack{order:-1;display:grid;grid-template-columns:1fr 1fr;gap:12px;padding-bottom:14px}
+#monitor .side-stack .card{background:#fff;color:#1a2935;border:1px solid #dce6ee;border-radius:9px;box-shadow:none;padding:14px}
+#monitor .side-stack .card:nth-child(3){display:none}
+#monitor .side-stack .panel-title h3{font-size:13px}.side-stack .badge{background:#eaf3ff;color:#1769e0}
+#monitor .side-stack .empty{font-size:11px;padding:11px;color:#758596;background:#fff;border-color:#e1e9ef}
+#monitor .chart-card{background:#0b1c28;border:1px solid #1d3a4b;box-shadow:none;color:#eaf5fb;border-radius:9px}
+#monitor .chart-header{border-color:#1d3a4b;padding:16px 18px 10px}
+#monitor .chart-header h3{font-size:16px}.chart-header p,#monitor .legend{color:#8ba8b5}
+#monitor .chart-wrap{height:360px}
+#monitor .temperature-workspace{display:none}
+#monitor .footerbar{background:#0d202d;border-color:#1d3a4b;color:#8ba8b5;margin-top:12px}
+@media(max-width:900px){#monitor .cards{grid-template-columns:repeat(2,1fr)}#monitor .actions:after{display:none}}@media(max-width:600px){#monitor .cards{grid-template-columns:1fr}#monitor .side-stack{grid-template-columns:1fr}#monitor .actions{flex-wrap:wrap}#monitor .actions:before{width:100%}}
+</style>
+<script>
+/* Ajustes de hierarquia visual: não altera os contratos com o backend Python. */
+(function(){
+  const monitor=document.getElementById('monitor');
+  const cards=monitor.querySelector('.cards');
+  const cardList=cards.querySelectorAll('.card');
+  const labels=[['PRESSÃO ATUAL','Dentro da faixa de trabalho'],['PRESSÃO PROGRAMADA',''],['','',''],['','',''],['','',''],['TEMPERATURA ATUAL','Estável']];
+  labels.forEach((item,index)=>{if(!item[0]||!cardList[index])return;cardList[index].querySelector('.metric-head').textContent=item[0];cardList[index].querySelector('.metric-foot').textContent='● '+item[1]});
+  cards.setAttribute('data-force','Força atual\\A0,0 kN\\A● Sinal de inércia');
+  const currentUpdate=updateState;
+  updateState=function(s){
+    currentUpdate(s);
+    const inertia=Number(s.inercia_pressao||0);
+    cards.style.setProperty('--force-value',fmt(inertia));
+    cards.dataset.force=fmt(inertia);
+    const pseudoForce='Força atual\\A'+fmt(inertia)+' kN\\A● Sinal de inércia';
+    cards.setAttribute('data-force',pseudoForce);
+  };
+})();
+</script>
+<style>
+/* === ORACULUM V2: ABAS E PALETA OPERACIONAL === */
+#monitor{--op-base:#0a1119;--op-surface:#111b26;--op-elevated:#162432;--op-border:#273b4b;--op-text:#edf3f7;--op-muted:#8fa1af;--op-cyan:#459fff;--op-teal:#2fc996;--op-amber:#e1ad4c;--op-red:#e37983}
+#monitor .page-head{background:linear-gradient(105deg,#102333,#173144);border-color:#36526a}
+#monitor .cards,#monitor .workspace{background:var(--op-base)}
+#monitor .cards .card,#monitor .cards:before,#monitor .cards:after{background:linear-gradient(145deg,#0d2330,#102d3b);border-color:var(--op-border)}
+#monitor .metric-head,#monitor .chart-header p,#monitor .legend{color:var(--op-muted)}
+#monitor .metric-value,#monitor .chart-card{color:var(--op-text)}
+#monitor .metric-foot{color:var(--op-teal)}
+#monitor .chart-card{background:var(--op-surface);border-color:var(--op-border)}
+#monitor .chart-header{min-height:66px;align-items:center;gap:14px;border-color:var(--op-border)}
+#monitor .chart-header>div:first-child{min-width:170px}
+#monitor .chart-header h3{color:var(--op-text);letter-spacing:.1px}
+#monitor .chart-tabs{display:inline-flex;align-items:center;gap:3px;padding:4px;background:#0b151e;border:1px solid #2a4354;border-radius:8px;margin-left:auto}
+#monitor .chart-tab{appearance:none;border:0;background:transparent;color:#91a1ad;padding:7px 12px;border-radius:5px;font-size:11px;font-weight:700}
+#monitor .chart-tab:hover{color:#e8f0f5;background:#1a2d3d}
+#monitor .chart-tab.active{background:#284760;color:#f4f8fb;box-shadow:inset 0 0 0 1px #4e7693}
+#monitor .chart-tab-panel.is-hidden{display:none!important}
+#monitor .temperature-workspace.chart-tab-panel:not(.is-hidden){display:block}
+#monitor .temperature-workspace .chart-wrap{height:360px}
+#monitor .side-stack .card{border-color:#d9e5ec}
+#monitor .side-stack .badge{background:#e6eff8;color:#2e6fa3}
+#monitor .btn-start{background:var(--op-teal);border-color:var(--op-teal);color:#06251c}
+#monitor .btn-pause{background:#123145;border-color:#315d70;color:#d9f1fb}
+#monitor .btn-stop{background:#251d26;border-color:#6f4852;color:#ffb8c0}
+@media(max-width:820px){#monitor .chart-header{align-items:flex-start;flex-wrap:wrap}#monitor .chart-tabs{margin-left:0;order:3}.chart-header .legend{width:100%;order:2}}
+</style>
+<style>
+/* Hierarquia visual: operação em azul-marinho, informação tabular clara e análise em fundo escuro. */
+#monitor .page-head{background:linear-gradient(105deg,#0a2230,#103347);border-color:#275269}
+#monitor .cards{background:#0b1b27;padding:15px}
+#monitor .cards .card,#monitor .cards:before,#monitor .cards:after{background:linear-gradient(145deg,#102d3d,#0d2331);border-color:#20465a}
+#monitor .workspace{background:transparent;padding:0 15px 15px}
+#monitor .side-stack{padding:14px 0}
+#monitor .side-stack .card{background:#fff;color:#1c2c38;border-color:#dce6ed;box-shadow:0 6px 18px rgba(29,57,76,.05)}
+#monitor .side-stack .panel-title h3{color:#243643}
+#monitor .side-stack .empty{background:#fbfdfe;color:#708291;border-color:#dce6ed}
+#monitor .chart-card{background:#081a26;border-color:#1b3c4f}
+#monitor .chart-header{background:#0b202e;border-color:#1b3c4f}
+#monitor .footerbar{background:#fff;color:#647887;border-color:#dce6ed}
+</style>
+<script>
+/* Abas locais e desenho em canvas com cores para ambiente industrial escuro. */
+(function(){
+  const monitor=document.getElementById('monitor');
+  const workspace=monitor.querySelector('.workspace');
+  const pressurePanel=workspace.querySelector('.chart-card:not(.temperature-workspace)');
+  const temperaturePanel=monitor.querySelector('.temperature-workspace');
+  if(!pressurePanel||!temperaturePanel)return;
+  workspace.appendChild(temperaturePanel);
+  pressurePanel.classList.add('chart-tab-panel');
+  temperaturePanel.classList.add('chart-tab-panel','is-hidden');
+  const panelData={
+    pressure:{panel:pressurePanel,title:'Evolução do processo',description:'Pressão registrada ao longo do ciclo atual.',legend:'● Pressão lida   ● Programada   ● Limites'},
+    temperature:{panel:temperaturePanel,title:'Evolução do processo',description:'Temperaturas registradas ao longo do ciclo atual.',legend:'● Programada   ● Lida 1   ● Lida 2   ● Limites'}
+  };
+  function makeTabs(type){
+    const holder=document.createElement('div');holder.className='chart-tabs';holder.setAttribute('role','tablist');holder.setAttribute('aria-label','Grandeza do gráfico');
+    [['pressure','Pressão'],['temperature','Temperatura']].forEach(([id,label])=>{const button=document.createElement('button');button.type='button';button.className='chart-tab'+(id===type?' active':'');button.textContent=label;button.setAttribute('aria-selected',String(id===type));button.onclick=()=>selectTab(id);holder.appendChild(button)});
+    panelData[type].panel.querySelector('.chart-header').appendChild(holder);
+  }
+  function selectTab(type){
+    Object.entries(panelData).forEach(([key,item])=>{const active=key===type;item.panel.classList.toggle('is-hidden',!active);item.panel.querySelectorAll('.chart-tab').forEach(button=>{button.classList.toggle('active',button.textContent===(active?(key==='pressure'?'Pressão':'Temperatura'):'—'));button.setAttribute('aria-selected',String(active&&button.classList.contains('active')))});});
+    if(type==='pressure'){resize()}else{resizeTemperature()}
+  }
+  Object.entries(panelData).forEach(([type,item])=>{const header=item.panel.querySelector('.chart-header');header.querySelector('h3').textContent=item.title;header.querySelector('p').textContent=item.description;header.querySelector('.legend').textContent=item.legend;makeTabs(type)});
+  function paintChart(canvas,context,series,opts){
+    const rect=canvas.getBoundingClientRect(),w=rect.width,h=rect.height;if(w<2||h<2)return;
+    const dpr=window.devicePixelRatio||1;canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);context.setTransform(dpr,0,0,dpr,0,0);context.clearRect(0,0,w,h);context.fillStyle='#0d1822';context.fillRect(0,0,w,h);
+    const margin={l:66,r:20,t:19,b:47},pw=w-margin.l-margin.r,ph=h-margin.t-margin.b;
+    const valid=series.flatMap(s=>s.values.map(Number)).filter(Number.isFinite);context.font='11px Segoe UI';
+    if(valid.length<2){context.fillStyle='#9ab0bd';context.textAlign='center';context.font='14px Segoe UI';context.fillText(opts.empty,w/2,h/2);return}
+    let min=Math.min(...valid),max=Math.max(...valid);if(opts.floor!==undefined)min=Math.min(min,opts.floor);const padding=Math.max((max-min)*.12,1);min-=padding;max+=padding;
+    const y=v=>margin.t+ph*(1-(v-min)/(max-min||1)), n=Math.max(...series.map(s=>s.values.length)),x=i=>margin.l+pw*i/Math.max(1,n-1);
+    context.lineWidth=1;for(let i=0;i<=5;i++){const yy=margin.t+ph*i/5,val=max-(max-min)*i/5;context.strokeStyle='#263a49';context.beginPath();context.moveTo(margin.l,yy);context.lineTo(w-margin.r,yy);context.stroke();context.fillStyle='#8fa1af';context.textAlign='right';context.fillText(fmt(val),margin.l-9,yy+4)}
+    context.textAlign='center';for(let i=0;i<=5;i++){const xx=margin.l+pw*i/5;context.strokeStyle='#1d2e3a';context.beginPath();context.moveTo(xx,margin.t);context.lineTo(xx,margin.t+ph);context.stroke();const at=times.length?times[Math.min(times.length-1,Math.round((times.length-1)*i/5))]:i;context.fillStyle='#8fa1af';context.fillText(fmt(at),xx,h-27)}
+    series.forEach(s=>{context.beginPath();context.strokeStyle=s.color;context.lineWidth=s.width||2.2;context.setLineDash(s.dash||[]);let open=false;s.values.forEach((v,i)=>{if(!Number.isFinite(Number(v)))return;const xx=x(i),yy=y(Number(v));if(!open){context.moveTo(xx,yy);open=true}else context.lineTo(xx,yy)});context.stroke();context.setLineDash([])});
+    const primary=series.find(s=>s.primary);if(primary&&primary.values.length){const last=Number(primary.values.at(-1));if(Number.isFinite(last)){context.beginPath();context.arc(x(primary.values.length-1),y(last),4,0,Math.PI*2);context.fillStyle=primary.color;context.fill();context.strokeStyle='#0d1822';context.lineWidth=2;context.stroke()}}
+    context.save();context.fillStyle='#b7c6d0';context.font='600 11px Segoe UI';context.textAlign='center';context.fillText('Tempo (s)',margin.l+pw/2,h-8);context.translate(16,margin.t+ph/2);context.rotate(-Math.PI/2);context.fillText(opts.axis,0,0);context.restore();
+  }
+  draw=function(){paintChart(canvas,ctx,[{values:lower,color:'#78afd0',dash:[5,4],width:1.2},{values:upper,color:'#78afd0',dash:[5,4],width:1.2},{values:setp,color:'#a7cde4',dash:[5,3],width:1.7},{values:real,color:'#328fc2',primary:true,width:2.7}],{floor:0,axis:'Pressão (kgf/cm²)',empty:'Aguardando dados do ciclo'})};
+  drawTemperature=function(){paintChart(tCanvas,tCtx,[{values:tempLimiteMin,color:'#6fa6c8',dash:[6,4],width:1.2},{values:tempLimiteMax,color:'#6fa6c8',dash:[6,4],width:1.2},{values:tempP,color:'#a7cde4',dash:[5,3],width:1.7},{values:temp1,color:'#328fc2',primary:true,width:2.5},{values:temp2,color:'#5fa9d0',width:2.2}],{axis:'Temperatura (°C)',empty:'Temperaturas não configuradas ou sem amostras'})};
+  selectTab('pressure');
+})();
+</script>
+<style>
+/* Proposta B: faixa operacional contínua em vez de cartões escuros empilhados. */
+#monitor .page-head{margin-bottom:0;background:#102d3e;border-color:#214f65;border-radius:12px 12px 0 0}
+#monitor .cards{background:#102d3e;border:1px solid #214f65;border-top:0;border-radius:0 0 12px 12px;margin-bottom:22px;padding:0;gap:0;overflow:hidden}
+#monitor .cards:before,#monitor .cards:after{content:none;display:none}
+#monitor .cards .card{min-height:112px;background:transparent!important;border:0!important;border-radius:0!important;box-shadow:none!important;padding:19px 18px}
+#monitor .cards .card:nth-child(1){order:1}
+#monitor .cards .card:nth-child(6){order:2;border-left:1px solid #285168!important}
+#monitor .cards .card.monitor-live-extra{border-left:1px solid #285168!important}
+#monitor .cards .metric-head{color:#a7bdc9;font-size:11px;font-weight:650;letter-spacing:.15px;margin-bottom:14px}
+#monitor .cards .metric-value{color:#f0f7fa;font-size:26px;letter-spacing:-.5px}
+#monitor .cards .metric-unit{color:#a7bdc9;font-size:12px}
+#monitor .cards .metric-foot{color:#5bd4aa;font-size:10px;margin-top:8px}
+#monitor .workspace{padding:0;background:transparent}
+#monitor .side-stack{gap:14px;padding:0 0 18px}
+#monitor .side-stack .card{border-radius:10px;box-shadow:0 5px 14px rgba(20,48,64,.06)}
+#monitor .chart-card{border-radius:12px;background:#0b1c29;border-color:#193c50;overflow:hidden}
+#monitor .chart-header{min-height:74px;padding:17px 20px;background:transparent;border-color:#193c50}
+#monitor .chart-wrap{padding:10px 18px 8px}
+#monitor .footerbar{margin-top:14px}
+@media(max-width:900px){#monitor .cards{grid-template-columns:repeat(2,1fr)}#monitor .cards .card.monitor-live-extra{border-left:0!important;border-top:1px solid #285168!important}#monitor .cards .card.monitor-live-extra:nth-child(9){border-left:1px solid #285168!important}}@media(max-width:600px){#monitor .cards{grid-template-columns:1fr}#monitor .cards .card:nth-child(6),#monitor .cards .card.monitor-live-extra{border-left:0!important;border-top:1px solid #285168!important}}
+</style>
+<style>
+/* Sistema monocromático: azul informa ação, estado e série; contraste cria a hierarquia. */
+#monitor{--op-cyan:#42a5f5;--op-teal:#42a5f5;--op-amber:#8ec5f5;--op-red:#75b6ed}
+#monitor .btn-start{background:#2f80ed;border-color:#2f80ed;color:#fff}
+#monitor .btn-pause{background:#163349;border-color:#315d7a;color:#c4e3fb}
+#monitor .btn-stop{background:#142b3e;border-color:#315d7a;color:#a9d6f6}
+#monitor #pauseBtn{display:none}
+#monitor .actions:has(#pauseBtn:not(:disabled)):after,#monitor .metric-foot,#monitor .cards .metric-foot{color:#62c5f5}
+#monitor .chart-tab.active{background:#25577b;box-shadow:inset 0 0 0 1px #65aee0}
+#monitor .side-stack .badge{background:#e7f2fc;color:#2b78b5}
+#monitor .chart-card{border-color:#1d4963}
+#monitor .chart-header{border-color:#1d4963}
+</style>
+<style>
+/* Indicadores do ciclo: azul claro para manter continuidade com a identidade visual. */
+#monitor .side-stack .card{background:#102d3e;color:#edf6fb;border-color:#285168;box-shadow:none}
+#monitor .side-stack .panel-title h3{color:#f0f7fa}
+#monitor .side-stack .badge{background:#1b4660;color:#a9d9fa}
+#monitor .side-stack .empty{background:#0d2636;color:#aac3d3;border-color:#285168}
+</style>
+<style>
+/* Separação de contexto entre os comandos e a leitura do processo. */
+#monitor .cards{position:relative;margin-top:48px;overflow:visible}
+#monitor .cards:before{content:'VALORES ATUAIS';display:block;position:absolute;z-index:1;left:0;top:-36px;padding:8px 13px;background:#2f80ed;color:#fff;border-radius:7px 7px 0 0;font-size:11px;font-weight:800;letter-spacing:.9px;line-height:1}
+</style>
+<style>
+/* Paleta final — uma única escala azul-petróleo, do fundo ao dado operacional. */
+body{background:#eef5fa}
+#monitor .page-head,#monitor .cards,#monitor .side-stack .card{background:#12374d;border-color:#285a73}
+#monitor .cards .card{border-color:#285a73!important}
+#monitor .cards .card:nth-child(6),#monitor .cards .card.monitor-live-extra{border-color:#285a73!important}
+#monitor .chart-card{background:#0a2637;border-color:#1b4b63}
+#monitor .chart-header{background:#0c2c3e;border-color:#1b4b63}
+#monitor .chart-tabs{background:#0a2332;border-color:#285a73}
+#monitor .chart-tab{color:#a5c5d7}
+#monitor .chart-tab:hover{background:#17455e;color:#eaf5fa}
+#monitor .chart-tab.active{background:#245f80;box-shadow:inset 0 0 0 1px #4d92b9}
+#monitor .btn-start,#monitor .cards:before{background:#287faf;border-color:#287faf}
+#monitor .btn-pause,#monitor .btn-stop{background:#12374d;border-color:#35647d;color:#a5c5d7}
+#monitor .actions:has(#pauseBtn:not(:disabled)):after,#monitor .metric-foot,#monitor .cards .metric-foot{color:#77c2e6}
+#monitor .metric-head{color:#b3cfde}
+#monitor .side-stack .panel-title h3{color:#eef6fa}
+#monitor .side-stack .badge{background:#1d5572;color:#b9e0f4}
+#monitor .side-stack .empty{background:#102f42;color:#accbda;border-color:#285a73}
+#monitor #connectionDot{background:#77c2e6!important;box-shadow:0 0 0 3px rgba(119,194,230,.12)}
+</style>
+<script>
+/* Valores complementares reais, em vez de texto decorativo em pseudo-elementos. */
+(function(){
+  const cards=document.querySelector('#monitor .cards');
+  if(!cards||document.getElementById('cycleTimeLive'))return;
+  function addMetric(id,label,unit,foot,order){
+    const card=document.createElement('div');card.className='card monitor-live-extra';card.style.order=order;
+    card.innerHTML='<div class="metric-head">'+label+'</div><span class="metric-value" id="'+id+'">0,0</span><span class="metric-unit">'+unit+'</span><div class="metric-foot" id="'+id+'State">● '+foot+'</div>';
+    cards.appendChild(card);
+  }
+  addMetric('cycleTimeLive','TEMPO DO CICLO','min','Aguardando início do ciclo',3);
+  addMetric('inertiaLive','INÉRCIA DE PRESSÃO','UINT','Sinal de processo',4);
+  function duration(value){const total=Math.max(0,Math.round(Number(value)||0));return String(Math.floor(total/60)).padStart(2,'0')+':'+String(total%60).padStart(2,'0')}
+  const previousUpdate=updateState;
+  updateState=function(state){
+    previousUpdate(state);
+    const cycleSeconds=times.length?Math.max(...times.map(Number).filter(Number.isFinite),0):0;
+    const cycle=document.getElementById('cycleTimeLive');
+    const cycleState=document.getElementById('cycleTimeLiveState');
+    cycle.textContent=duration(cycleSeconds);
+    cycleState.textContent=cycleSeconds?'● Ciclo em acompanhamento':'● Aguardando início do ciclo';
+    const inertia=document.getElementById('inertiaLive');
+    inertia.textContent=fmt(state.inercia_pressao);
+  };
+})();
+</script>
 </body></html>
