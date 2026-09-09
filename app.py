@@ -38,11 +38,11 @@ except Exception as e:
 # ============================================================
 IP_PADRAO = "172.25.217.210"
 PROTOCOLO_PADRAO = "SCHNEIDER"
-FLAG_MONITOR_STATUS_PADRAO = "%MW3004"
-TRIGGER_PADRAO = "MW3000:BOOL:0"
+FLAG_MONITOR_STATUS_PADRAO = "%MW29974"
+TRIGGER_PADRAO = "MW29970:BOOL:0"
 TIPO_TRIGGER_PADRAO = "NIVEL"
 PRESSAO_LIDA_PADRAO = "MW413:UINT"
-PRESSAO_PROGRAMADA_PADRAO = "MW3002:UINT"
+PRESSAO_PROGRAMADA_PADRAO = "MW29972:UINT"
 INERCIA_PRESSAO_PADRAO = "MW515:UINT"
 TEMPERATURA_PROGRAMADA_PADRAO = "MW409:UINT"
 TEMPERATURA_LIDA_1_PADRAO = "MW410:UINT"
@@ -64,15 +64,15 @@ MARGEM_EIXO_X_S = 2.0   # respiro (em segundos) nas bordas esquerda/direita do e
 LIMIAR_VENTILACAO = 2   # ALT11 - MW413 abaixo deste valor = ventilando (antes 5)
 DURACAO_MINIMA_VENTILACAO = 2.0   # ALT15 - descarta ventilações falsas/fantasma curtas (antes 0.2)
 # ALT15 - Anti-glitch (debounce): nº de amostras consecutivas para confirmar transição de estado.
-DEBOUNCE_AMOSTRAS_SOB_PRESSAO = 2   # confirma FIM do sob pressão (MW3002 = 0) - ignora 1 leitura isolada
+DEBOUNCE_AMOSTRAS_SOB_PRESSAO = 2   # confirma FIM do sob pressão (MW29972 = 0) - ignora 1 leitura isolada
 DEBOUNCE_AMOSTRAS_VENTILACAO = 2    # confirma INÍCIO da ventilação (MW413 < limiar) - ignora glitch
 DURACAO_MINIMA_SOB_PRESSAO = 1.0    # ALT15 - períodos sob pressão menores que isso são descartados
 # ALT17 - Define o que "Tempo Sob Pressão" mede:
-#   True  (ii/B2) = janela do COMANDO (MW3002 > 0), uniformiza o 1º período (imune à oscilação do MW413).
+#   True  (ii/B2) = janela do COMANDO (MW29972 > 0), uniformiza o 1º período (imune à oscilação do MW413).
 #   False (i)     = tempo em que a PRESSÃO REAL (MW413) ficou acima do limiar (lógica original).
 # MW413 é usado apenas para CONFIRMAR que houve pressurização durante a janela.
 MEDIR_SOB_PRESSAO_POR_MW3002 = False   # ALT18 - medir pela PRESSÃO REAL (MW413), tempo efetivo sob pressão (~6 s)
-LIMIAR_PRESSAO_PROGRAMADA_ATIVA = 0   # ALT8: MW3002 > 0 = pressao programada ativa (limites so aqui)
+LIMIAR_PRESSAO_PROGRAMADA_ATIVA = 0   # ALT8: MW29972 > 0 = pressao programada ativa (limites so aqui)
 MARGEM_Y_LIMITES_PERC = 0.05   # ALT9: 5% de folga acima do max. e abaixo do min.
 INCLUIR_LIMITES_NO_AUTOSCALE_Y = True   # ALT9: liga/desliga a inclusao dos limites no autoscale Y
 INTERVALO_AQUISICAO_FIXO = 0.1
@@ -167,12 +167,12 @@ config_html = {
     "protocolo": "SCHNEIDER",
     "porta": 502,
     "offset_modbus": 0,
-    "trigger": "MW3000:BOOL:0",
-    "flag_monitor_status": "%MW3004",
+    "trigger": "MW29970:BOOL:0",
+    "flag_monitor_status": "%MW29974",
     "tipo_trigger": "NIVEL",
     "trigger_habilitado": True,
     "monitorar_pressao_zero": False,
-    "tags": ["MW413:UINT", "MW3002:UINT", "MW515:UINT"],
+    "tags": ["MW413:UINT", "MW29972:UINT", "MW515:UINT"],
 "temperatura_programada_tag": TEMPERATURA_PROGRAMADA_PADRAO,
 "temperatura_lida_1_tag": TEMPERATURA_LIDA_1_PADRAO,
 "temperatura_lida_2_tag": TEMPERATURA_LIDA_2_PADRAO,
@@ -501,14 +501,14 @@ def diagnostico_modbus_pontual():
         ]
 
         # ====================================================
-        # Trigger %MW3000
+        # Trigger %MW29970
         # ====================================================
         etapa = "trigger"
 
         trigger_uint = int(
             ler_tag_schneider(
                 ip,
-                "MW3000:UINT",
+                "MW29970:UINT",
             )
         ) & 0xFFFF
 
@@ -533,7 +533,7 @@ def diagnostico_modbus_pontual():
 
         linhas.extend(
             [
-                "Trigger %MW3000",
+                "Trigger %MW29970",
                 f"UINT: {trigger_uint}",
                 f"INT: {trigger_int}",
                 f"Bit 0: {trigger_bit_0}",
@@ -547,20 +547,20 @@ def diagnostico_modbus_pontual():
         )
 
         # ====================================================
-        # Monitor Status %MW3004
+        # Monitor Status %MW29974
         # ====================================================
         etapa = "monitor"
 
         monitor_uint = int(
             ler_tag_schneider(
                 ip,
-                "MW3004:UINT",
+                "MW29974:UINT",
             )
         ) & 0xFFFF
 
         linhas.extend(
             [
-                "Monitor %MW3004",
+                "Monitor %MW29974",
                 f"UINT lido: {monitor_uint}",
                 "",
             ]
@@ -711,14 +711,14 @@ def diagnostico_modbus_pontual():
         ]
 
         # ====================================================
-        # Trigger %MW3000
+        # Trigger %MW29970
         # ====================================================
         etapa = "trigger"
 
         trigger_uint = int(
             ler_tag_schneider(
                 ip,
-                "MW3000:UINT",
+                "MW29970:UINT",
             )
         ) & 0xFFFF
 
@@ -743,7 +743,7 @@ def diagnostico_modbus_pontual():
 
         linhas.extend(
             [
-                "Trigger %MW3000",
+                "Trigger %MW29970",
                 f"UINT: {trigger_uint}",
                 f"INT: {trigger_int}",
                 f"Bit 0: {trigger_bit_0}",
@@ -757,20 +757,20 @@ def diagnostico_modbus_pontual():
         )
 
         # ====================================================
-        # Monitor Status %MW3004
+        # Monitor Status %MW29974
         # ====================================================
         etapa = "monitor"
 
         monitor_uint = int(
             ler_tag_schneider(
                 ip,
-                "MW3004:UINT",
+                "MW29974:UINT",
             )
         ) & 0xFFFF
 
         linhas.extend(
             [
-                "Monitor %MW3004",
+                "Monitor %MW29974",
                 f"UINT lido: {monitor_uint}",
                 "",
             ]
@@ -923,7 +923,7 @@ def resetar_linhas_limite_pressao_programada():
     linha_limite_pressao_prog_min = linha_limite_pressao_prog_max = faixa_limite_pressao_programada = None
 
 def obter_intervalos_pressao_programada_ativa(dados_buffers):
-    """ALT8 - (x_ini, x_fim) em tempo relativo para cada trecho com MW3002 > LIMIAR_PRESSAO_PROGRAMADA_ATIVA."""
+    """ALT8 - (x_ini, x_fim) em tempo relativo para cada trecho com MW29972 > LIMIAR_PRESSAO_PROGRAMADA_ATIVA."""
     intervalos = []
     try:
         if not dados_buffers or INDICE_PRESSAO_PROGRAMADA >= len(dados_buffers):
@@ -950,7 +950,7 @@ def obter_intervalos_pressao_programada_ativa(dados_buffers):
     return intervalos
 
 def desenhar_limites_pressao_programada(eixo, dados_buffers=None):
-    """ALT8 - Desenha limites (min./max.) e faixa APENAS nos trechos com MW3002 > 0."""
+    """ALT8 - Desenha limites (min./max.) e faixa APENAS nos trechos com MW29972 > 0."""
     global linha_limite_pressao_prog_min, linha_limite_pressao_prog_max, faixa_limite_pressao_programada
     if eixo is None or limite_pressao_programada_min is None or limite_pressao_programada_max is None: return
     dados = buffers if dados_buffers is None else dados_buffers
@@ -1048,7 +1048,7 @@ def calcular_pontos_pressao_fora_limites(
             pressao > limite_maximo
         )
 
-        # ALT13 - look-ahead: se o MW3002 zera na PROXIMA amostra, esta e a borda
+        # ALT13 - look-ahead: se o MW29972 zera na PROXIMA amostra, esta e a borda
         # de despressurizacao (Pressao Lida descendo p/ zero) -> nao e violacao inferior.
         despressurizando = False
         if i + 1 < quantidade:
@@ -1556,7 +1556,7 @@ def obter_limites_tempo_sob_pressao(pressao_programada, inercia_pressao):
 
     Prioriza os limites calculados a partir de FORM[0].Pressao e
     FORM[0].ToleranciaDePressao. Se o vetor ainda não estiver disponível,
-    mantém compatibilidade usando MW3002 - MW515 como limite mínimo e não
+    mantém compatibilidade usando MW29972 - MW515 como limite mínimo e não
     impõe limite máximo adicional.
     """
     if limite_pressao_programada_min is not None and limite_pressao_programada_max is not None:
@@ -1571,9 +1571,9 @@ def obter_limites_tempo_sob_pressao(pressao_programada, inercia_pressao):
 def calcular_condicao_tempo_sob_pressao(pressao_lida, pressao_programada, inercia_pressao):
     """ALT24B - Verifica somente a condição de início do Tempo Sob Pressão.
 
-    O início exige MW3002 ativo e MW413 maior ou igual ao limite mínimo.
+    O início exige MW29972 ativo e MW413 maior ou igual ao limite mínimo.
     Depois do início, MW413 não mantém nem encerra o período. O encerramento
-    ocorre exclusivamente pela queda confirmada de MW3002 para zero.
+    ocorre exclusivamente pela queda confirmada de MW29972 para zero.
     """
     try:
         pressao_lida = float(pressao_lida)
@@ -1836,7 +1836,7 @@ def leitor_com_trigger(ip, protocolo, tags, trigger_tag, trigger_habilitado, tip
     tempo_inicio_ventilacao = None
     tempos_ventilacao = []
     houve_pressurizacao = False   # ALT10 - True apos MW413 subir >= LIMIAR_VENTILACAO ao menos uma vez
-    contador_prog_zero = 0        # ALT24B - confirma queda de MW3002
+    contador_prog_zero = 0        # ALT24B - confirma queda de MW29972
     t_primeiro_prog_zero = None   # ALT24B - timestamp do primeiro zero
     pressao_inicio_sob_pressao = None
     contador_ventilando = 0       # ALT15 - amostras consecutivas com MW413 < limiar (anti-glitch)
@@ -1857,7 +1857,7 @@ def leitor_com_trigger(ip, protocolo, tags, trigger_tag, trigger_habilitado, tip
                 atualizar_flag_monitor_status(STATUS_AGUARDANDO_INICIO)
             time.sleep(0.3); continue
         if not em_ciclo and flag == 0:
-            set_status("Aguardando próximo ciclo: %MW3000 = 1...", "blue"); time.sleep(INTERVALO_AQUISICAO_FIXO); continue
+            set_status("Aguardando próximo ciclo: %MW29970 = 1...", "blue"); time.sleep(INTERVALO_AQUISICAO_FIXO); continue
         if not em_ciclo and flag == 1:
             numero += 1; em_ciclo = True; zoom_usuario_ativo = False; limpar_buffers_ciclo(); resetar_qualidade_pressao_lida(); atualizar_flag_monitor_status(STATUS_EM_MONITORACAO); set_status(f"Ciclo {numero} iniciado", "green")
             condicao_tempo_anterior = False; tempo_inicio_sob_pressao = None; limite_inicio_tempo_sob_pressao = None; confirmou_pressurizacao = False; tempos_sob_pressao = []; atualizar_label_tempos_sob_pressao()
@@ -1866,7 +1866,7 @@ def leitor_com_trigger(ip, protocolo, tags, trigger_tag, trigger_habilitado, tip
             contador_ventilando = 0; t_primeiro_abaixo_v = None   # ALT15/ALT19 reset anti-glitch
         if em_ciclo and flag == 0:
             # ALT24C - finalização protegida e estado restabelecido mesmo em caso de erro.
-            finalizar_ciclo_seguro(numero, "%MW3000 = 0")
+            finalizar_ciclo_seguro(numero, "%MW29970 = 0")
             em_ciclo = False
             atualizar_flag_monitor_status(STATUS_AGUARDANDO_INICIO)
             if not modo_html_ativo and root is not None:
@@ -2855,10 +2855,10 @@ class OraculumHtmlApi:
         ip = config_html["ip"]
         sinais = {
             "pressao_lida": "MW413:UINT",
-            "pressao_programada": "MW3002:UINT",
+            "pressao_programada": "MW29972:UINT",
             "inercia": "MW515:UINT",
-            "trigger": "MW3000:UINT",
-            "monitor": "MW3004:UINT",
+            "trigger": "MW29970:UINT",
+            "monitor": "MW29974:UINT",
         }
         valores, erros = {}, {}
         for nome, tag in sinais.items():
@@ -3117,9 +3117,20 @@ OraculumHtmlApi.obter_configuracao = _alt30b_obter_configuracao
 # Cadastro oficial. O HTML envia apenas o identificador; IP e protocolo sao
 # sempre resolvidos e validados pelo backend.
 MAQUINAS_DISPONIVEIS = {
-    "10552": {"id": "10552", "nome": "Maquina 10552", "ip": "172.25.217.210", "protocolo": "SCHNEIDER", "porta": 502},
-    "1041": {"id": "1041", "nome": "Maquina 1041", "ip": "172.25.217.92", "protocolo": "SCHNEIDER", "porta": 502},
+    "1410": {"id": "1410", "nome": "Maquina 1410", "ip": "172.25.217.210", "protocolo": "SCHNEIDER", "porta": 502},
+    "10552": {"id": "10552", "nome": "Maquina 10552", "ip": "172.25.217.92", "protocolo": "SCHNEIDER", "porta": 502},
     "14441": {"id": "14441", "nome": "Maquina 14441", "ip": "172.25.217.35", "protocolo": "SCHNEIDER", "porta": 502},
+    "1581": {"id": "1581", "nome": "Maquina 1581", "ip": "172.25.217.135", "protocolo": "SCHNEIDER", "porta": 502},
+    "1583": {"id": "1583", "nome": "Maquina 1583", "ip": "172.25.217.161", "protocolo": "SCHNEIDER", "porta": 502},
+    "1634": {"id": "1634", "nome": "Maquina 1634", "ip": "172.25.217.101", "protocolo": "SCHNEIDER", "porta": 502},
+    "1653": {"id": "1653", "nome": "Maquina 1653", "ip": "172.25.217.176", "protocolo": "SCHNEIDER", "porta": 502},
+    "1656": {"id": "1656", "nome": "Maquina 1656", "ip": "172.25.217.175", "protocolo": "SCHNEIDER", "porta": 502},
+    "1658": {"id": "1658", "nome": "Maquina 1658", "ip": "172.25.217.149", "protocolo": "SCHNEIDER", "porta": 502},
+    "1659": {"id": "1659", "nome": "Maquina 1659", "ip": "172.25.217.150", "protocolo": "SCHNEIDER", "porta": 502},
+    "1693": {"id": "1693", "nome": "Maquina 1693", "ip": "172.25.217.122", "protocolo": "SCHNEIDER", "porta": 502},
+    "1694": {"id": "1694", "nome": "Maquina 1694", "ip": "172.25.217.123", "protocolo": "SCHNEIDER", "porta": 502},
+    "1803": {"id": "1803", "nome": "Maquina 1803", "ip": "172.25.217.100", "protocolo": "SCHNEIDER", "porta": 502},
+    "12232": {"id": "12232", "nome": "Maquina 12232", "ip": "172.25.217.134", "protocolo": "SCHNEIDER", "porta": 502},
 }
 maquina_ativa_id = None
 _alt31a_lock = threading.RLock()
