@@ -32,6 +32,12 @@ except Exception as e:
     print(f"[ERRO] Falha ao importar modbus_simple.py: {e}")
     read_mw = read_mw_block = read_mw_block_auto = None
     write_mw = write_mw_schneider = None
+try:
+    from ab_simple import ler_tag_rockwell, ler_tags_rockwell
+except Exception as erro:
+    print(f"[ERRO] Falha ao importar ab_simple.py: {erro}")
+    ler_tag_rockwell = None
+    ler_tags_rockwell = None
 
 # ============================================================
 # CONFIGURACOES PADRAO
@@ -381,6 +387,15 @@ def ler_tag_schneider(ip, tag):
     info = parse_schneider_tag(tag)
     if info is None: return None
     return read_mw(ip, aplicar_offset(info["register"]), tipo=info["tipo"], bit=info["bit"])
+def ler_tag_por_protocolo(ip, protocolo, tag, slot=0):
+    protocolo_normalizado = str(protocolo or "").strip().upper()
+    if protocolo_normalizado == "SCHNEIDER":
+        return ler_tag_schneider(ip, tag)
+    if protocolo_normalizado == "ROCKWELL":
+        if ler_tag_rockwell is None:
+            raise RuntimeError("Driver Rockwell não disponível.")
+        return ler_tag_rockwell(ip, tag, slot=slot)
+    raise RuntimeError(f"Protocolo não suportado: {protocolo_normalizado}")
 
 def escrever_mw_schneider(ip, register, value):
     reg = aplicar_offset(register)
@@ -1547,9 +1562,15 @@ def localizar_csv_principal_recente(numero_ciclo, inicio_execucao):
 
 # AQUISICAO
 # ============================================================
-def atualizar_canais_por_protocolo(ip, protocolo, tags):
-    if protocolo.upper() != "SCHNEIDER": raise RuntimeError("Protocolo não suportado.")
-    return [ler_tag_schneider(ip, t) for t in tags]
+def atualizar_canais_por_protocolo(ip, protocolo, tags, slot=0):
+    protocolo_normalizado = str(protocolo or "").strip().upper()
+    if protocolo_normalizado == "SCHNEIDER":
+        return [ler_tag_schneider(ip, tag) for tag in tags]
+    if protocolo_normalizado == "ROCKWELL":
+        if ler_tags_rockwell is None:
+            raise RuntimeError("Driver Rockwell não disponível.")
+        return ler_tags_rockwell(ip, tags, slot=slot)
+    raise RuntimeError(f"Protocolo não suportado: {protocolo_normalizado}")
 
 def obter_limites_tempo_sob_pressao(pressao_programada, inercia_pressao):
     """ALT19 - Retorna a faixa válida da receita para o Tempo Sob Pressão.
@@ -1824,7 +1845,7 @@ def finalizar_ciclo_seguro(numero, motivo):
         set_status(f"Erro na finalização do ciclo {numero}. Consulte o terminal.", "red")
         return False
 
-def leitor_com_trigger(ip, protocolo, tags, trigger_tag, trigger_habilitado, tipo_trigger, monitorar_pressao_zero):
+def leitor_com_trigger(ip, protocolo, tags, trigger_tag, trigger_habilitado, tipo_trigger, monitorar_pressao_zero, slot=0):
     global rodando, pausado, buffers, zoom_usuario_ativo, tempos_sob_pressao, tempos_ventilacao, ultima_comunicacao_ok, ultimo_trigger_lido
     em_ciclo = False; numero = 0; falhas_t = falhas_c = 0
     condicao_tempo_anterior = False
@@ -1845,7 +1866,9 @@ def leitor_com_trigger(ip, protocolo, tags, trigger_tag, trigger_habilitado, tip
     while rodando and not fechando:
         if pausado: time.sleep(0.1); continue
         try:
-            flag = 1 if not trigger_habilitado else (1 if int(ler_tag_schneider(ip, trigger_tag)) != 0 else 0)
+            flag = 1 if not trigger_habilitado else (
+                1 if int(ler_tag_por_protocolo(ip, protocolo, trigger_tag, slot=slot)) != 0 else 0
+            )
             falhas_t = 0
             ultimo_trigger_lido = int(flag)
             ultima_comunicacao_ok = time.time()
@@ -1875,7 +1898,7 @@ def leitor_com_trigger(ip, protocolo, tags, trigger_tag, trigger_habilitado, tip
         try:
             # ITEM 3 - timestamp no CENTRO da janela de leitura (remove viés da latência Modbus).
             t_antes = time.time()
-            valores = atualizar_canais_por_protocolo(ip, protocolo, tags)
+            valores = atualizar_canais_por_protocolo(ip, protocolo, tags, slot=slot)
             t_depois = time.time()
             agora = (t_antes + t_depois) / 2.0
             falhas_c = 0
@@ -2063,11 +2086,16 @@ def start():
         ip=entry_ip.get().strip(); tags_ativas=coletar_tags_ativas()
         if not ip or not tags_ativas: raise ValueError("Informe IP e pelo menos um canal.")
         buffers=[[] for _ in tags_ativas]; zoom_usuario_ativo=False
-        try: ler_vetor_m340_automatico(ip)
-        except Exception as e: set_vetor_status(f"Falha ao ler vetor: {e}", "red")
+        protocolo = protocolo_var.get().strip().upper()
+        if protocolo == "SCHNEIDER":
+            try: ler_vetor_m340_automatico(ip)
+            except Exception as e: set_vetor_status(f"Falha ao ler vetor: {e}", "red")
+        else:
+            set_vetor_status("FORM[0] não configurado para o protocolo Rockwell.", "gray")
         ax.clear(); aplicar_estilo_grafico(ax,fig); atualizar_linhas_limite_pressao_programada()
         rodando=True; pausado=False; atualizar_botoes_estado_rodando()
-        thread_aquisicao=threading.Thread(target=leitor_com_trigger,args=(ip,protocolo_var.get(),tags_ativas,entry_trigger.get(),bool(trigger_enable_var.get()),trigger_tipo_var.get(),bool(trigger_stop_zero_var.get())),daemon=True); thread_aquisicao.start()
+        slot = obter_slot_rockwell()
+        thread_aquisicao=threading.Thread(target=leitor_com_trigger,args=(ip,protocolo_var.get(),tags_ativas,entry_trigger.get(),bool(trigger_enable_var.get()),trigger_tipo_var.get(),bool(trigger_stop_zero_var.get()),slot),daemon=True); thread_aquisicao.start()
     except Exception as e: messagebox.showerror("Erro", str(e))
 
 def pause():
@@ -2805,13 +2833,18 @@ class OraculumHtmlApi:
                 raise ValueError("Informe IP e os sinais de pressão.")
             buffers = [[] for _ in tags_ativas]
             zoom_usuario_ativo = False
-            try:
-                ler_vetor_m340_automatico(ip)
-            except Exception as erro:
-                print(f"[ALT23B][AVISO] Falha ao ler FORM[0] no início: {erro}")
+            protocolo = str(config_html["protocolo"]).strip().upper()
+            if protocolo == "SCHNEIDER":
+                try:
+                    ler_vetor_m340_automatico(ip)
+                except Exception as erro:
+                    print(f"[ALT23B][AVISO] Falha ao ler FORM[0] no início: {erro}")
+            else:
+                print("[ROCKWELL] FORM[0] não configurado para este protocolo.")
             rodando = True
             pausado = False
             mensagem_html = "Monitoração iniciada."
+            slot = obter_slot_rockwell()
             thread_aquisicao = threading.Thread(
                 target=leitor_com_trigger,
                 args=(
@@ -2822,6 +2855,7 @@ class OraculumHtmlApi:
                     bool(config_html["trigger_habilitado"]),
                     config_html["tipo_trigger"],
                     bool(config_html["monitorar_pressao_zero"]),
+                    slot,
                 ),
                 daemon=True,
             )
@@ -2891,6 +2925,9 @@ class OraculumHtmlApi:
 
     def testar_form(self):
         global ultima_comunicacao_ok
+        protocolo = str(config_html.get("protocolo", "")).strip().upper()
+        if protocolo != "SCHNEIDER":
+            return self.resposta(False, "FORM[0] ainda não configurado para Rockwell.")
         try:
             valores = ler_vetor_m340_automatico(config_html["ip"])
             ultima_comunicacao_ok = time.time()
@@ -3174,6 +3211,14 @@ def _alt31a_maquina_ativa():
     with _alt31a_lock:
         item = MAQUINAS_DISPONIVEIS.get(maquina_ativa_id)
         return dict(item) if item else None
+def obter_slot_rockwell():
+    maquina = _alt31a_maquina_ativa()
+    if not maquina:
+        return 0
+    try:
+        return int(maquina.get("slot", 0))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _alt31a_troca_bloqueada():
