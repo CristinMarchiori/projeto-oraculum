@@ -3202,7 +3202,64 @@ MAQUINAS_DISPONIVEIS = {
     "14438": {"id": "14438", "nome": "Maquina 14438", "ip": "172.25.217.26", "protocolo": "SCHNEIDER", "porta": 502},
     "14439": {"id": "14439", "nome": "Maquina 14439", "ip": "172.25.217.27", "protocolo": "SCHNEIDER", "porta": 502},
     "14442": {"id": "14442", "nome": "Maquina 14442", "ip": "172.25.217.32", "protocolo": "SCHNEIDER", "porta": 502},
+    "1409": {
+        "id": "1409",
+        "nome": "Maquina 1409",
+        "ip": "172.25.217.219",
+        "protocolo": "ROCKWELL",
+        "porta": 502,
+        "slot": 3,
+    },
+    "1582": {
+        "id": "1582",
+        "nome": "Maquina 1582",
+        "ip": "172.25.217.155",
+        "protocolo": "ROCKWELL",
+        "porta": 502,
+        "slot": 1,
+    },
+    "1584": {
+        "id": "1584",
+        "nome": "Maquina 1584",
+        "ip": "172.25.217.156",
+        "protocolo": "ROCKWELL",
+        "porta": 502,
+        "slot": 1,
+    },
+    "10178": {
+        "id": "10178",
+        "nome": "Maquina 10178",
+        "ip": "172.25.218.39",
+        "protocolo": "ROCKWELL",
+        "porta": 502,
+        "slot": 3,
+    },
+    "11819": {
+        "id": "11819",
+        "nome": "Maquina 11819",
+        "ip": "172.25.218.43",
+        "protocolo": "ROCKWELL",
+        "porta": 502,
+        "slot": 3,
+    },
+    "12262": {
+        "id": "12262",
+        "nome": "Maquina 12262",
+        "ip": "172.25.216.98",
+        "protocolo": "ROCKWELL",
+        "porta": 502,
+        "slot": 1,
+    },
+    "12276": {
+        "id": "12276",
+        "nome": "Maquina 12276",
+        "ip": "172.25.217.60",
+        "protocolo": "ROCKWELL",
+        "porta": 502,
+        "slot": 1,
+    },
 }
+
 maquina_ativa_id = None
 _alt31a_lock = threading.RLock()
 
@@ -3671,6 +3728,182 @@ OraculumHtmlApi.obter_detalhes_ciclo = _alt32b_obter_detalhes
 OraculumHtmlApi.iniciar = _alt32a_iniciar
 OraculumHtmlApi.parar = _alt32a_parar
 # === FIM ALT32A ===
+
+
+# === ALT33A: CONFIGURACAO ROCKWELL POR MAQUINA ===
+try:
+    from ab_simple import escrever_tag_rockwell
+except Exception as erro:
+    print(f"[ERRO] Falha ao importar escrita Rockwell: {erro}")
+    escrever_tag_rockwell = None
+
+MAQUINAS_DISPONIVEIS["1582"] = {
+    "id": "1582",
+    "nome": "Maquina 1582",
+    "ip": "172.25.217.155",
+    "protocolo": "ROCKWELL",
+    "porta": 44818,
+    "slot": 0,
+    "tags": [
+        "ICOH1[13]",
+        "Flag_MonitorPressaoProgramada",
+        "CONF1[16]",
+        "ICOH1[9]",
+        "ICOH1[10]",
+        "ICOH1[11]",
+    ],
+    "trigger": "Flag_MonitorPrensaEmCiclo",
+    "flag_monitor_status": "Flag_MonitorStatus",
+}
+
+
+def _alt33a_dados_oficiais(maquina):
+    protocolo = str(maquina.get("protocolo", PROTOCOLO_PADRAO)).strip().upper()
+    dados = {
+        "maquina_id": maquina["id"],
+        "ip": maquina["ip"],
+        "protocolo": protocolo,
+        "porta": int(maquina.get("porta", 44818 if protocolo == "ROCKWELL" else 502)),
+        "slot": int(maquina.get("slot", 0)),
+    }
+    if protocolo == "ROCKWELL":
+        tags = [str(tag or "").strip() for tag in maquina.get("tags", [])]
+        if len(tags) != 6 or not all(tags):
+            raise ValueError(f"Maquina {maquina['id']} sem os seis canais Rockwell configurados.")
+        dados.update({
+            "tags": list(tags),
+            "trigger": str(maquina.get("trigger", "")).strip(),
+            "flag_monitor_status": str(maquina.get("flag_monitor_status", "")).strip(),
+            "temperatura_programada_tag": tags[3],
+            "temperatura_lida_1_tag": tags[4],
+            "temperatura_lida_2_tag": tags[5],
+        })
+        if not dados["trigger"] or not dados["flag_monitor_status"]:
+            raise ValueError(f"Maquina {maquina['id']} sem trigger ou flag de status Rockwell.")
+    return dados
+
+
+def _alt33a_aplicar_maquina(maquina=None):
+    maquina = maquina or _alt31a_maquina_ativa()
+    if not maquina:
+        return None
+    dados = _alt33a_dados_oficiais(maquina)
+    if "tags" in dados:
+        dados["tags"] = list(dados["tags"])
+    config_html.update(dados)
+    return dados
+
+
+def montar_tags_ativas_html():
+    protocolo = str(config_html.get("protocolo", PROTOCOLO_PADRAO)).strip().upper()
+    if protocolo == "ROCKWELL":
+        tags = [str(tag or "").strip() for tag in config_html.get("tags", [])]
+        if len(tags) != 6 or not all(tags):
+            raise ValueError("A maquina Rockwell deve possuir os seis canais configurados.")
+        return tags
+    tags_salvas = list(config_html.get("tags") or [])
+    padroes = [PRESSAO_LIDA_PADRAO, PRESSAO_PROGRAMADA_PADRAO, INERCIA_PRESSAO_PADRAO]
+    tags_pressao = []
+    for indice, padrao in enumerate(padroes):
+        valor = tags_salvas[indice] if indice < len(tags_salvas) else padrao
+        valor = str(valor or padrao).strip()
+        parse_schneider_tag(valor)
+        tags_pressao.append(valor)
+    temperaturas, completa, parcial = obter_estado_configuracao_temperaturas()
+    if parcial:
+        mensagem = "Configuracao de temperatura incompleta. Aquisicao termica desabilitada."
+        print(f"[AVISO ALT29B] {mensagem}")
+        set_status(mensagem, "orange")
+        return tags_pressao
+    if completa:
+        for tag in temperaturas:
+            parse_schneider_tag(tag)
+        return tags_pressao + temperaturas
+    return tags_pressao
+
+
+def atualizar_flag_monitor_status(status):
+    global ultimo_monitor_status
+    ultimo_monitor_status = int(status)
+    try:
+        if modo_html_ativo:
+            ip = str(config_html.get("ip", "")).strip()
+            tag = str(config_html.get("flag_monitor_status", "")).strip()
+            protocolo = str(config_html.get("protocolo", PROTOCOLO_PADRAO)).strip().upper()
+        else:
+            if not entry_ip or not entry_flag_monitor_status:
+                return
+            ip = entry_ip.get().strip()
+            tag = entry_flag_monitor_status.get().strip()
+            protocolo = str(protocolo_var.get() if protocolo_var else PROTOCOLO_PADRAO).strip().upper()
+        if not ip or not tag:
+            return
+        if protocolo == "ROCKWELL":
+            if escrever_tag_rockwell is None:
+                raise RuntimeError("Driver de escrita Rockwell nao disponivel.")
+            escrever_tag_rockwell(ip, tag, int(status), slot=obter_slot_rockwell())
+        elif protocolo == "SCHNEIDER":
+            escrever_mw_schneider(ip, parse_mw_address(tag), int(status))
+        else:
+            raise RuntimeError(f"Protocolo nao suportado: {protocolo}")
+    except Exception as erro:
+        print(f"[AVISO] Falha ao atualizar flag monitor status: {erro}")
+
+
+_alt33a_selecionar_anterior = OraculumHtmlApi.selecionar_maquina
+def _alt33a_selecionar_maquina(self, identificador):
+    resposta = _alt33a_selecionar_anterior(self, identificador)
+    if isinstance(resposta, dict) and resposta.get("sucesso"):
+        maquina = _alt31a_maquina_ativa()
+        _alt33a_aplicar_maquina(maquina)
+        resposta["maquina_ativa"] = dict(maquina) if maquina else None
+        resposta["configuracao"] = _alt31b_copia_configuracao()
+    return resposta
+
+
+_alt33a_iniciar_anterior = OraculumHtmlApi.iniciar
+def _alt33a_iniciar(self, *args, **kwargs):
+    maquina = _alt31a_maquina_ativa()
+    if maquina:
+        _alt33a_aplicar_maquina(maquina)
+    return _alt33a_iniciar_anterior(self, *args, **kwargs)
+
+
+_alt33a_salvar_anterior = OraculumHtmlApi.salvar_configuracao
+def _alt33a_salvar_configuracao(self, dados):
+    maquina = _alt31a_maquina_ativa()
+    if maquina and str(maquina.get("protocolo", "")).strip().upper() == "ROCKWELL":
+        if rodando:
+            return {"sucesso": False, "mensagem": "Pare a monitoracao antes de alterar a configuracao."}
+        _alt33a_aplicar_maquina(maquina)
+        return {
+            "sucesso": True,
+            "mensagem": "Configuracao Rockwell carregada do cadastro oficial.",
+            "configuracao": _alt31b_copia_configuracao(),
+            "maquina_ativa": dict(maquina),
+        }
+    return _alt33a_salvar_anterior(self, dados)
+
+
+_alt33a_obter_config_anterior = OraculumHtmlApi.obter_configuracao
+def _alt33a_obter_configuracao(self, *args, **kwargs):
+    resposta = _alt33a_obter_config_anterior(self, *args, **kwargs)
+    maquina = _alt31a_maquina_ativa()
+    if maquina:
+        _alt33a_aplicar_maquina(maquina)
+    configuracao = _alt31b_copia_configuracao()
+    if isinstance(resposta, dict) and "configuracao" in resposta:
+        resposta["configuracao"] = configuracao
+        resposta["maquina_ativa"] = dict(maquina) if maquina else None
+        return resposta
+    return configuracao
+
+
+OraculumHtmlApi.selecionar_maquina = _alt33a_selecionar_maquina
+OraculumHtmlApi.iniciar = _alt33a_iniciar
+OraculumHtmlApi.salvar_configuracao = _alt33a_salvar_configuracao
+OraculumHtmlApi.obter_configuracao = _alt33a_obter_configuracao
+# === FIM ALT33A ===
 
 
 def localizar_html():
