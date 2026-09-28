@@ -199,6 +199,8 @@ tempos_ventilacao = []
 fila_salvamento = queue.Queue()
 ultimo_vetor_m340 = []
 ultimo_vetor_m340_descrito = []
+tempo_sob_pressao_programado = None
+alivio_pressao_programado = None
 limite_pressao_programada_min = None
 limite_pressao_programada_max = None
 linha_limite_pressao_prog_min = None
@@ -396,6 +398,58 @@ def ler_tag_por_protocolo(ip, protocolo, tag, slot=0):
             raise RuntimeError("Driver Rockwell não disponível.")
         return ler_tag_rockwell(ip, tag, slot=slot)
     raise RuntimeError(f"Protocolo não suportado: {protocolo_normalizado}")
+def atualizar_tempo_sob_pressao_programado():
+    """Le o Tempo Sob Pressao programado conforme o protocolo da maquina ativa."""
+    global tempo_sob_pressao_programado
+    maquina = _alt31a_maquina_ativa() if "_alt31a_maquina_ativa" in globals() else None
+    if not maquina:
+        tempo_sob_pressao_programado = None
+        return None
+    protocolo = str(maquina.get("protocolo", "")).strip().upper()
+    ip = str(maquina.get("ip", "")).strip()
+    try:
+        if protocolo == "SCHNEIDER":
+            valor = ler_tag_schneider(ip, "MW17016:UINT")
+        elif protocolo == "ROCKWELL":
+            valor = ler_tag_rockwell(ip, "FORM1[16]", slot=int(maquina.get("slot", 0)))
+        else:
+            raise RuntimeError(f"Protocolo nao suportado: {protocolo}")
+        tempo_sob_pressao_programado = float(valor)
+        return tempo_sob_pressao_programado
+    except Exception as erro:
+        tempo_sob_pressao_programado = None
+        print(f"[AVISO] Falha ao ler Tempo Sob Pressao programado: {erro}")
+        return None
+
+def atualizar_alivio_pressao_programado():
+    """Le e soma os tempos programados de alivio conforme o protocolo ativo."""
+    global alivio_pressao_programado
+    maquina = _alt31a_maquina_ativa() if "_alt31a_maquina_ativa" in globals() else None
+    if not maquina:
+        alivio_pressao_programado = None
+        return None
+    protocolo = str(maquina.get("protocolo", "")).strip().upper()
+    ip = str(maquina.get("ip", "")).strip()
+    try:
+        if protocolo == "SCHNEIDER":
+            tempo_abrindo = ler_tag_schneider(ip, "MW17017:UINT")
+            tempo_aberta = ler_tag_schneider(ip, "MW17018:UINT")
+        elif protocolo == "ROCKWELL":
+            slot = int(maquina.get("slot", 0))
+            tempo_abrindo = ler_tag_rockwell(ip, "FORM1[17]", slot=slot)
+            tempo_aberta = ler_tag_rockwell(ip, "FORM1[18]", slot=slot)
+        else:
+            raise RuntimeError(f"Protocolo nao suportado: {protocolo}")
+        parcela_abrindo = float(tempo_abrindo)
+        parcela_aberta = float(tempo_aberta)
+        if parcela_abrindo < 0 or parcela_aberta < 0:
+            raise ValueError("Tempos programados de alivio nao podem ser negativos.")
+        alivio_pressao_programado = (parcela_abrindo + parcela_aberta) / 10.0
+        return alivio_pressao_programado
+    except Exception as erro:
+        alivio_pressao_programado = None
+        print(f"[AVISO] Falha ao ler Alivio de Pressao programado: {erro}")
+        return None
 
 def escrever_mw_schneider(ip, register, value):
     reg = aplicar_offset(register)
@@ -3856,6 +3910,8 @@ def _alt33a_selecionar_maquina(self, identificador):
     if isinstance(resposta, dict) and resposta.get("sucesso"):
         maquina = _alt31a_maquina_ativa()
         _alt33a_aplicar_maquina(maquina)
+        atualizar_tempo_sob_pressao_programado()
+        atualizar_alivio_pressao_programado()
         resposta["maquina_ativa"] = dict(maquina) if maquina else None
         resposta["configuracao"] = _alt31b_copia_configuracao()
     return resposta
@@ -3866,6 +3922,8 @@ def _alt33a_iniciar(self, *args, **kwargs):
     maquina = _alt31a_maquina_ativa()
     if maquina:
         _alt33a_aplicar_maquina(maquina)
+        atualizar_tempo_sob_pressao_programado()
+        atualizar_alivio_pressao_programado()
     return _alt33a_iniciar_anterior(self, *args, **kwargs)
 
 
@@ -3903,6 +3961,13 @@ OraculumHtmlApi.selecionar_maquina = _alt33a_selecionar_maquina
 OraculumHtmlApi.iniciar = _alt33a_iniciar
 OraculumHtmlApi.salvar_configuracao = _alt33a_salvar_configuracao
 OraculumHtmlApi.obter_configuracao = _alt33a_obter_configuracao
+_alt34a_obter_estado_anterior = OraculumHtmlApi.obter_estado
+def _alt34a_obter_estado(self, *args, **kwargs):
+    estado = _alt34a_obter_estado_anterior(self, *args, **kwargs)
+    estado["tempo_sob_pressao_programado"] = tempo_sob_pressao_programado
+    estado["alivio_pressao_programado"] = alivio_pressao_programado
+    return estado
+OraculumHtmlApi.obter_estado = _alt34a_obter_estado
 # === FIM ALT33A ===
 
 
