@@ -200,6 +200,7 @@ fila_salvamento = queue.Queue()
 ultimo_vetor_m340 = []
 ultimo_vetor_m340_descrito = []
 tempo_sob_pressao_programado = None
+tempo_final_sob_pressao_programado = None
 alivio_pressao_programado = None
 limite_pressao_programada_min = None
 limite_pressao_programada_max = None
@@ -419,6 +420,29 @@ def atualizar_tempo_sob_pressao_programado():
     except Exception as erro:
         tempo_sob_pressao_programado = None
         print(f"[AVISO] Falha ao ler Tempo Sob Pressao programado: {erro}")
+        return None
+
+def atualizar_tempo_final_sob_pressao_programado():
+    """Le o Tempo Final Sob Pressao programado conforme o protocolo ativo."""
+    global tempo_final_sob_pressao_programado
+    maquina = _alt31a_maquina_ativa() if "_alt31a_maquina_ativa" in globals() else None
+    if not maquina:
+        tempo_final_sob_pressao_programado = None
+        return None
+    protocolo = str(maquina.get("protocolo", "")).strip().upper()
+    ip = str(maquina.get("ip", "")).strip()
+    try:
+        if protocolo == "SCHNEIDER":
+            valor = ler_tag_schneider(ip, "MW17019:UINT")
+        elif protocolo == "ROCKWELL":
+            valor = ler_tag_rockwell(ip, "FORM1[19]", slot=int(maquina.get("slot", 0)))
+        else:
+            raise RuntimeError(f"Protocolo nao suportado: {protocolo}")
+        tempo_final_sob_pressao_programado = float(valor)
+        return tempo_final_sob_pressao_programado
+    except Exception as erro:
+        tempo_final_sob_pressao_programado = None
+        print(f"[AVISO] Falha ao ler Tempo Final Sob Pressao programado: {erro}")
         return None
 
 def atualizar_alivio_pressao_programado():
@@ -1452,6 +1476,9 @@ def salvar_ciclo_automatico(snapshot_buffers, snapshot_tags, numero_ciclo, snaps
         "tempo_total_sob_pressao_s": round(sum(vetor_sp), 3),
         "quantidade_alivios_pressao": len(vetor_alivio),
         "tempo_total_alivio_pressao_s": round(sum(vetor_alivio), 3),
+        "tempo_sob_pressao_programado": tempo_sob_pressao_programado,
+        "tempo_final_sob_pressao_programado": tempo_final_sob_pressao_programado,
+        "alivio_pressao_programado": alivio_pressao_programado,
         **estados,
         "mensagem": mensagem_resultado,
     }
@@ -3772,8 +3799,11 @@ def _alt32b_obter_detalhes(self, arquivo_base):
         with historico_resultados_lock:
             item=next((dict(x) for x in reversed(historico_resultados) if x.get('arquivo_base')==arquivo_base),None)
         if item:
-            for chave in ('maquina_id','maquina_nome','maquina_ip','maquina_protocolo'):
-                resposta[chave]=item.get(chave)
+            for chave in (
+                'maquina_id', 'maquina_nome', 'maquina_ip', 'maquina_protocolo',
+                'tempo_sob_pressao_programado', 'tempo_final_sob_pressao_programado', 'alivio_pressao_programado',
+            ):
+                resposta[chave] = item.get(chave)
     return resposta
 
 # === ALT32B: IDENTIFICACAO CONSOLIDADA DA MAQUINA ===
@@ -3911,6 +3941,7 @@ def _alt33a_selecionar_maquina(self, identificador):
         maquina = _alt31a_maquina_ativa()
         _alt33a_aplicar_maquina(maquina)
         atualizar_tempo_sob_pressao_programado()
+        atualizar_tempo_final_sob_pressao_programado()
         atualizar_alivio_pressao_programado()
         resposta["maquina_ativa"] = dict(maquina) if maquina else None
         resposta["configuracao"] = _alt31b_copia_configuracao()
@@ -3923,6 +3954,7 @@ def _alt33a_iniciar(self, *args, **kwargs):
     if maquina:
         _alt33a_aplicar_maquina(maquina)
         atualizar_tempo_sob_pressao_programado()
+        atualizar_tempo_final_sob_pressao_programado()
         atualizar_alivio_pressao_programado()
     return _alt33a_iniciar_anterior(self, *args, **kwargs)
 
@@ -3965,11 +3997,164 @@ _alt34a_obter_estado_anterior = OraculumHtmlApi.obter_estado
 def _alt34a_obter_estado(self, *args, **kwargs):
     estado = _alt34a_obter_estado_anterior(self, *args, **kwargs)
     estado["tempo_sob_pressao_programado"] = tempo_sob_pressao_programado
+    estado["tempo_final_sob_pressao_programado"] = tempo_final_sob_pressao_programado
     estado["alivio_pressao_programado"] = alivio_pressao_programado
     return estado
 OraculumHtmlApi.obter_estado = _alt34a_obter_estado
 # === FIM ALT33A ===
 
+
+# === ALT35B: STATUS CONSOLIDADO ANTES DO REGISTRO ===
+_alt35b_contexto = threading.local()
+_alt35b_registrar_anterior = _registrar_resultado_ciclo
+
+def _registrar_resultado_ciclo(resultado):
+    """ALT35B - inclui as validacoes no resultado antes de registra-lo."""
+    item = dict(resultado or {})
+    contexto = getattr(_alt35b_contexto, "status", None)
+    if isinstance(contexto, dict):
+        item.update(contexto)
+    return _alt35b_registrar_anterior(item)
+
+_alt35b_salvar_anterior = salvar_ciclo_automatico
+
+def salvar_ciclo_automatico(snapshot_buffers, snapshot_tags, numero_ciclo, snapshot_form=None):
+    limites_disponiveis = (
+        limite_pressao_programada_min is not None
+        and limite_pressao_programada_max is not None
+    )
+    pontos_x, _ = calcular_pontos_pressao_fora_limites(
+        snapshot_buffers,
+        limite_pressao_programada_min,
+        limite_pressao_programada_max,
+    )
+    resumo_termico = _alt30a_enriquecer_resumo(
+        snapshot_buffers,
+        _alt30a_tolerancia_do_form(snapshot_form),
+    )
+    _alt35b_contexto.status = {
+        "pressao_validacao_disponivel": bool(limites_disponiveis),
+        "pressao_fora_limites": bool(pontos_x) if limites_disponiveis else None,
+        "temperatura_fora_limites": bool(
+            resumo_termico.get("amostras_lida_1_fora_limites", 0)
+            or resumo_termico.get("amostras_lida_2_fora_limites", 0)
+        ),
+        "limite_pressao_minimo": limite_pressao_programada_min,
+        "limite_pressao_maximo": limite_pressao_programada_max,
+    }
+    try:
+        return _alt35b_salvar_anterior(
+            snapshot_buffers, snapshot_tags, numero_ciclo, snapshot_form
+        )
+    finally:
+        _alt35b_contexto.status = None
+
+_alt35b_detalhes_anterior = OraculumHtmlApi.obter_detalhes_ciclo
+
+def _alt35b_obter_detalhes(self, arquivo_base):
+    resposta = _alt35b_detalhes_anterior(self, arquivo_base)
+    if not resposta.get("sucesso"):
+        return resposta
+    with historico_resultados_lock:
+        item = next(
+            (
+                dict(x)
+                for x in reversed(historico_resultados)
+                if x.get("arquivo_base") == arquivo_base
+            ),
+            None,
+        )
+    if not item:
+        resposta["pressao_validacao_disponivel"] = False
+        resposta["pressao_fora_limites"] = None
+        resposta["temperatura_fora_limites"] = None
+        return resposta
+    resposta["pressao_validacao_disponivel"] = bool(
+        item.get("pressao_validacao_disponivel")
+    )
+    resposta["pressao_fora_limites"] = item.get("pressao_fora_limites")
+    resposta["temperatura_fora_limites"] = item.get("temperatura_fora_limites")
+    return resposta
+
+OraculumHtmlApi.obter_detalhes_ciclo = _alt35b_obter_detalhes
+# === FIM ALT35B ===
+
+# === ALT36A: ATUALIZACAO DO FORM NA TROCA DE MAQUINA ===
+def _alt36a_limpar_estado_form():
+    global ultimo_vetor_m340, ultimo_vetor_m340_descrito
+    global tempo_sob_pressao_programado, tempo_final_sob_pressao_programado
+    global alivio_pressao_programado, limite_pressao_programada_min, limite_pressao_programada_max
+    global buffers, tags_ativas, tempos_sob_pressao, tempos_ventilacao, ultima_comunicacao_ok
+    ultimo_vetor_m340 = []
+    ultimo_vetor_m340_descrito = []
+    tempo_sob_pressao_programado = None
+    tempo_final_sob_pressao_programado = None
+    alivio_pressao_programado = None
+    limite_pressao_programada_min = None
+    limite_pressao_programada_max = None
+    buffers, tags_ativas = [], []
+    tempos_sob_pressao, tempos_ventilacao = [], []
+    ultima_comunicacao_ok = 0.0
+
+
+def _alt36a_ler_form_maquina_ativa():
+    global ultimo_vetor_m340, ultimo_vetor_m340_descrito, ultima_comunicacao_ok
+    maquina = _alt31a_maquina_ativa()
+    if not maquina:
+        raise RuntimeError("Nenhuma maquina selecionada para leitura do FORM.")
+    protocolo = str(maquina.get("protocolo", "")).strip().upper()
+    ip = str(maquina.get("ip", "")).strip()
+    if protocolo == "SCHNEIDER":
+        ler_vetor_m340_automatico(ip)
+    elif protocolo == "ROCKWELL":
+        if ler_tags_rockwell is None:
+            raise RuntimeError("Driver Rockwell nao disponivel.")
+        tags_form = [f"FORM1[{indice}]" for indice in range(QUANTIDADE_VETOR_FORM_M340)]
+        valores = list(ler_tags_rockwell(ip, tags_form, slot=int(maquina.get("slot", 0))))
+        if len(valores) != QUANTIDADE_VETOR_FORM_M340:
+            raise RuntimeError(f"FORM Rockwell incompleto: {len(valores)} / {QUANTIDADE_VETOR_FORM_M340}.")
+        ultimo_vetor_m340 = valores
+        ultimo_vetor_m340_descrito = [{**item, "valor": valores[int(item["inicio"])]} for item in MAPA_FORM_M340]
+        calcular_limites_pressao_programada_form_m340()
+    else:
+        raise RuntimeError(f"Protocolo nao suportado: {protocolo}")
+    atualizar_tempo_sob_pressao_programado()
+    atualizar_tempo_final_sob_pressao_programado()
+    atualizar_alivio_pressao_programado()
+    ultima_comunicacao_ok = time.time()
+    return len(ultimo_vetor_m340)
+
+
+_alt36a_selecionar_anterior = OraculumHtmlApi.selecionar_maquina
+
+def _alt36a_selecionar_maquina(self, identificador):
+    global mensagem_html
+    if rodando:
+        return {"sucesso": False, "mensagem": "Pare a monitoracao antes de trocar de maquina.", "maquina_ativa": _alt31a_maquina_ativa()}
+    _alt36a_limpar_estado_form()
+    resposta = _alt36a_selecionar_anterior(self, identificador)
+    if not isinstance(resposta, dict) or not resposta.get("sucesso"):
+        mensagem_html = (resposta or {}).get("mensagem", "Falha ao selecionar maquina.")
+        return resposta
+    try:
+        quantidade = _alt36a_ler_form_maquina_ativa()
+        maquina = _alt31a_maquina_ativa() or {}
+        mensagem_html = f'{maquina.get("nome", "Maquina")} selecionada. FORM atualizado.'
+        resposta.update({"mensagem": mensagem_html, "form_atualizado": True, "form_quantidade": quantidade})
+    except Exception as erro:
+        _alt36a_limpar_estado_form()
+        maquina = _alt31a_maquina_ativa() or {}
+        mensagem_html = f'Falha ao ler FORM da {maquina.get("nome", "maquina selecionada")}: {erro}'
+        print(f"[ERRO ALT36A] {mensagem_html}")
+        resposta.update({"sucesso": False, "mensagem": mensagem_html, "form_atualizado": False, "form_quantidade": 0})
+    resposta["maquina_ativa"] = _alt31a_maquina_ativa()
+    resposta["configuracao"] = _alt31b_copia_configuracao()
+    resposta["estado"] = self.obter_estado()
+    return resposta
+
+
+OraculumHtmlApi.selecionar_maquina = _alt36a_selecionar_maquina
+# === FIM ALT36A ===
 
 def localizar_html():
     pasta = os.path.dirname(os.path.abspath(__file__))
