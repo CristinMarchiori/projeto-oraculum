@@ -2741,10 +2741,6 @@ def salvar_png_snapshot(caminho_png, snapshot_buffers, snapshot_tags):
 
     axt.relim(); axt.autoscale_view()
     aplicar_estilo_legenda(axt)
-    sp = obter_vetor_tempos_sob_pressao(snapshot_buffers)
-    vt = obter_vetor_tempos_ventilacao(snapshot_buffers)
-    fs.text(.01, .045, formatar_vetor_para_png("Tempo Sob Pressao", sp, "periodo(s)"), fontsize=8, family="monospace", color="#0057B8")
-    fs.text(.01, .015, formatar_vetor_para_png("Tempo de Alivio de Pressao", vt, "alivio(s)"), fontsize=8, family="monospace", color="#F28E2B")
     fs.tight_layout(rect=[0, .07, 1, 1])
     fs.savefig(caminho_png)
 
@@ -3754,21 +3750,102 @@ def salvar_png_snapshot(caminho_png, snapshot_buffers, snapshot_tags):
     resultado = _alt32b_png_anterior(caminho_png, snapshot_buffers, snapshot_tags)
     maquina = getattr(_alt32b_contexto, 'maquina', None) or {}
     numero = getattr(_alt32b_contexto, 'numero_ciclo', 0)
-    # Acrescenta a identificacao visual ao PNG final sem alterar os graficos.
+    # Acrescenta identificacao e as tabelas do Historico ao PNG final.
     try:
         from matplotlib import image as mpimg
+
+        periodos_pressao = calcular_periodos_sob_pressao(snapshot_buffers)
+        periodos_alivio = calcular_periodos_ventilacao(snapshot_buffers)
+
+        def texto_tempo(valor):
+            try:
+                return f"{float(valor):.2f} s"
+            except (TypeError, ValueError):
+                return "--"
+
+        linhas_pressao = []
+        for indice, periodo in enumerate(periodos_pressao):
+            programado = (
+                tempo_final_sob_pressao_programado
+                if indice == len(periodos_pressao) - 1
+                else tempo_sob_pressao_programado
+            )
+            linhas_pressao.append([
+                f"Período {periodo.get('numero', indice + 1)}",
+                texto_tempo(periodo.get('duracao_s')),
+                texto_tempo(programado),
+            ])
+
+        linhas_alivio = [
+            [
+                f"Alívio {periodo.get('numero', indice + 1)}",
+                texto_tempo(periodo.get('duracao_s')),
+                texto_tempo(alivio_pressao_programado),
+            ]
+            for indice, periodo in enumerate(periodos_alivio)
+        ]
+
+        if not linhas_pressao:
+            linhas_pressao = [["Nenhum período", "--", "--"]]
+        if not linhas_alivio:
+            linhas_alivio = [["Nenhum alívio", "--", "--"]]
+
+        maior_quantidade = max(len(linhas_pressao), len(linhas_alivio))
+        altura_tabelas = min(0.34, 0.13 + maior_quantidade * 0.032)
         imagem = mpimg.imread(caminho_png)
-        figura = Figure(figsize=(12, 10), dpi=150)
-        eixo = figura.add_axes([0, 0, 1, 0.94])
+        figura = Figure(figsize=(12, 10 + maior_quantidade * 0.28), dpi=150)
+        eixo = figura.add_axes([0, altura_tabelas, 1, 0.94 - altura_tabelas])
         eixo.imshow(imagem)
         eixo.axis('off')
+
+        def adicionar_tabela(posicao, titulo, linhas, cor):
+            eixo_tabela = figura.add_axes(posicao)
+            eixo_tabela.axis('off')
+            eixo_tabela.set_title(titulo, fontsize=10, fontweight='bold', color=cor, pad=4)
+            tabela = eixo_tabela.table(
+                cellText=linhas,
+                colLabels=["Período", "Lido", "Programado"],
+                cellLoc='center',
+                colLoc='center',
+                loc='center',
+                colWidths=[0.42, 0.29, 0.29],
+            )
+            tabela.auto_set_font_size(False)
+            tabela.set_fontsize(8)
+            tabela.scale(1, 1.18)
+            for (linha, _), celula in tabela.get_celld().items():
+                celula.set_edgecolor('#D0D7DE')
+                celula.set_linewidth(0.6)
+                if linha == 0:
+                    celula.set_facecolor('#E8EEF4')
+                    celula.set_text_props(weight='bold', color='#24292F')
+                else:
+                    celula.set_facecolor('#FFFFFF')
+            return tabela
+
+        margem = 0.035
+        largura = 0.445
+        altura = max(0.08, altura_tabelas - 0.055)
+        adicionar_tabela(
+            [margem, 0.015, largura, altura],
+            "Tempo sob pressão",
+            linhas_pressao,
+            "#0057B8",
+        )
+        adicionar_tabela(
+            [1 - margem - largura, 0.015, largura, altura],
+            "Alívio de pressão",
+            linhas_alivio,
+            "#F28E2B",
+        )
+
         figura.suptitle(
             f"Oraculum | Máquina {maquina.get('id','não identificada')} | Ciclo {int(numero):04d}",
             fontsize=14, fontweight='bold', y=0.985
         )
         figura.savefig(caminho_png, bbox_inches='tight', pad_inches=0.08)
     except Exception as exc:
-        print(f"[AVISO ALT32B PNG] Identificacao visual nao aplicada: {exc}")
+        print(f"[AVISO ALT32B PNG] Identificacao/tabelas nao aplicadas: {exc}")
     return resultado
 
 _alt32b_salvar_anterior = salvar_ciclo_automatico
